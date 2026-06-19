@@ -14,7 +14,7 @@ const TENANTS: Tenant[] = [
     owner: "malliol",       // ← владелец GitHub репозитория
     repo: "rieltorie",
     branch: "main",
-    allowedUserIds: [],     // ← Telegram user ID риелтора (заполнить!)
+    allowedUserIds: [1108556509],
     botTokenSecret: "TELEGRAM_BOT_TOKEN",
   },
 ];
