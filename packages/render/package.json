@@ -1,0 +1,13 @@
+{
+  "name": "@rieltorie/render",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frozen presentation — компоненты без браузерных API",
+  "type": "module",
+  "main": "./index.ts",
+  "peerDependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "lucide-react": "^0.383.0"
+  }
+}

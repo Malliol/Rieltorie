@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Realtor",
+  "type": "object",
+  "required": ["name", "phone"],
+  "properties": {
+    "name":      { "type": "string" },
+    "tagline":   { "type": "string" },
+    "phone":     { "type": "string" },
+    "telegram":  { "type": "string" },
+    "max":       { "type": "string" },
+    "vk":        { "type": "string" },
+    "whatsapp":  { "type": "string" },
+    "photo":     { "type": "string" },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "value"],
+        "properties": {
+          "label": { "type": "string" },
+          "value": { "type": "string" }
+        }
+      }
+    }
+  }
+}

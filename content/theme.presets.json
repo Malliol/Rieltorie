@@ -1,0 +1,47 @@
+[
+  {
+    "name": "Классика",
+    "bg": "#f5f5f0",
+    "surface": "#ffffff",
+    "ink": "#1a1a1a",
+    "accent": "#1a3c5e",
+    "muted": "#6b7280",
+    "softAccent": "#e8eef4",
+    "border": "#e5e7eb",
+    "display": "'Fraunces', Georgia, serif",
+    "body": "'Inter', system-ui, sans-serif",
+    "radius": 12,
+    "unit": 20,
+    "ratio": "4/3"
+  },
+  {
+    "name": "Пихта",
+    "bg": "#ecefea",
+    "surface": "#ffffff",
+    "ink": "#16201a",
+    "accent": "#1f5132",
+    "muted": "#5a7060",
+    "softAccent": "#d8e8dc",
+    "border": "#c8d8cc",
+    "display": "'Fraunces', Georgia, serif",
+    "body": "'Inter', system-ui, sans-serif",
+    "radius": 14,
+    "unit": 20,
+    "ratio": "4/3"
+  },
+  {
+    "name": "Терракота",
+    "bg": "#faf5f0",
+    "surface": "#ffffff",
+    "ink": "#1c1410",
+    "accent": "#c0522a",
+    "muted": "#7a6055",
+    "softAccent": "#f5e0d4",
+    "border": "#e8d5c8",
+    "display": "'Fraunces', Georgia, serif",
+    "body": "'Inter', system-ui, sans-serif",
+    "radius": 10,
+    "unit": 20,
+    "ratio": "4/3"
+  }
+]

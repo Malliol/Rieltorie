@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RealObject",
+  "type": "object",
+  "required": ["id", "title", "type", "status", "price", "photos", "createdAt"],
+  "properties": {
+    "id":          { "type": "string" },
+    "title":       { "type": "string" },
+    "type":        { "type": "string", "enum": ["apartment", "house", "land", "commercial"] },
+    "status":      { "type": "string", "enum": ["active", "sold"] },
+    "price":       { "type": "number", "minimum": 0 },
+    "area":        { "type": "number", "minimum": 0 },
+    "rooms":       { "type": "integer", "minimum": 0 },
+    "floor":       { "type": "integer", "minimum": 1 },
+    "floors":      { "type": "integer", "minimum": 1 },
+    "year":        { "type": "integer" },
+    "district":    { "type": "string" },
+    "street":      { "type": "string" },
+    "description": { "type": "string" },
+    "features":    { "type": "array", "items": { "type": "string" } },
+    "photos":      { "type": "array", "items": { "type": "string" } },
+    "createdAt":   { "type": "string", "format": "date" }
+  }
+}
