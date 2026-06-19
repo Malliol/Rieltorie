@@ -1,0 +1,12 @@
+name: Имя Риелтора
+tagline: Подбор, проверка, сделка под ключ
+phone: "+79000000000"
+telegram: username
+photo: realtor.webp
+facts:
+  - label: лет опыта
+    value: "5"
+  - label: сделок
+    value: "100+"
+  - label: рейтинг
+    value: "4.9"

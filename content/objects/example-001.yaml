@@ -1,0 +1,19 @@
+id: example-001
+title: 2-комн. квартира на Ленина
+type: apartment
+status: active
+price: 4500000
+area: 52
+rooms: 2
+floor: 5
+floors: 9
+year: 2010
+district: Центральный
+street: ул. Ленина, 10
+description: Светлая квартира с хорошим ремонтом. Рядом школа, магазины, парк.
+features:
+  - Ремонт
+  - Балкон
+  - Парковка
+photos: []
+createdAt: "2026-06-19"
