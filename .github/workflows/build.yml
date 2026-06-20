@@ -36,7 +36,7 @@ jobs:
       - name: Build static site
         run: npm run build
         env:
-          BASE: ""  # Оставить пустым для custom domain, или "/<repo>" для GitHub Pages
+          BASE: "/Rieltorie"  # GitHub Pages project site; для custom domain — оставить пустым
 
       - uses: actions/upload-pages-artifact@v3
         with:

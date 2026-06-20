@@ -12,7 +12,7 @@ const TENANTS: Tenant[] = [
   {
     id: "default",
     owner: "malliol",       // ← владелец GitHub репозитория
-    repo: "rieltorie",
+    repo: "Rieltorie",
     branch: "main",
     allowedUserIds: [1108556509, 1367102384],
     botTokenSecret: "TELEGRAM_BOT_TOKEN",
