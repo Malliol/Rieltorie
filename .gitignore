@@ -2,3 +2,13 @@
 .env
 .env.*
 !.env.example
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+apps/*/dist/
+
+# Logs
+*.log

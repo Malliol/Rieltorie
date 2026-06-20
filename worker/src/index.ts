@@ -83,7 +83,7 @@ export default {
       const tenant = resolveTenant(initData);
 
       // Verify signature
-      const botToken = (env as Record<string, string>)[tenant.botTokenSecret];
+      const botToken = (env as unknown as Record<string, string>)[tenant.botTokenSecret];
       const userId = await verifyTelegram(initData, botToken);
 
       // In dev mode (empty initData) — check env
