@@ -1,7 +1,81 @@
+import yaml from "js-yaml";
+
 interface FileEntry {
   path: string;
   content: string;
   encoding: "utf-8" | "base64";
+}
+
+interface RepoRef {
+  token: string;
+  owner: string;
+  repo: string;
+  branch: string;
+}
+
+function ghHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "rieltorie-worker",
+  };
+}
+
+// Декодировать base64-содержимое файла GitHub в UTF-8 строку
+function decodeBase64Utf8(b64: string): string {
+  const bin = atob(b64.replace(/\s/g, ""));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export interface ObjectSummary {
+  id: string;
+  title: string;
+  price: number;
+}
+
+// Список опубликованных объектов (id, заголовок, цена)
+export async function listObjects(opts: RepoRef): Promise<ObjectSummary[]> {
+  const { token, owner, repo, branch } = opts;
+  const headers = ghHeaders(token);
+  const dirUrl = `https://api.github.com/repos/${owner}/${repo}/contents/content/objects?ref=${branch}`;
+  const res = await fetch(dirUrl, { headers });
+  if (res.status === 404) return [];
+  if (!res.ok) throw new Error(`List objects: ${await res.text()}`);
+  const items = await res.json() as Array<{ name: string; url: string }>;
+  const yamls = items.filter((i) => i.name.endsWith(".yaml"));
+
+  return Promise.all(yamls.map(async (it) => {
+    const fr = await fetch(it.url, { headers });
+    const j = await fr.json() as { content: string };
+    const parsed = yaml.load(decodeBase64Utf8(j.content)) as { id?: string; title?: string; price?: number };
+    return {
+      id: parsed.id ?? it.name.replace(/\.yaml$/, ""),
+      title: parsed.title ?? "(без названия)",
+      price: parsed.price ?? 0,
+    };
+  }));
+}
+
+// Удалить объект (yaml) по id
+export async function deleteObject(opts: RepoRef & { id: string }): Promise<void> {
+  const { token, owner, repo, branch, id } = opts;
+  const headers = ghHeaders(token);
+  const path = `content/objects/${id}.yaml`;
+  const base = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+  const getRes = await fetch(`${base}?ref=${branch}`, { headers });
+  if (!getRes.ok) throw new Error(`Get for delete: ${await getRes.text()}`);
+  const { sha } = await getRes.json() as { sha: string };
+
+  const delRes = await fetch(base, {
+    method: "DELETE",
+    headers,
+    body: JSON.stringify({ message: `chore: remove object ${id}`, sha, branch }),
+  });
+  if (!delRes.ok) throw new Error(`Delete: ${await delRes.text()}`);
 }
 
 export async function atomicCommit(opts: {
@@ -14,13 +88,7 @@ export async function atomicCommit(opts: {
 }): Promise<string> {
   const { token, owner, repo, branch, message, files } = opts;
   const base = `https://api.github.com/repos/${owner}/${repo}`;
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    Accept: "application/vnd.github+json",
-    "Content-Type": "application/json",
-    "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "rieltorie-worker",
-  };
+  const headers = ghHeaders(token);
 
   // 1. Get current branch ref
   const refRes = await fetch(`${base}/git/ref/heads/${branch}`, { headers });

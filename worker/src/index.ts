@@ -1,11 +1,13 @@
 import yaml from "js-yaml";
 import { atomicCommit } from "./github.js";
 import { resolveTenant } from "./tenants.js";
+import { handleTelegramUpdate } from "./telegram.js";
 import type { RealObject } from "../../schema/types.js";
 
 export interface Env {
   GITHUB_TOKEN: string;
   TELEGRAM_BOT_TOKEN: string;
+  WEBHOOK_SECRET: string;
 }
 
 // Проверить подпись Telegram initData (HMAC-SHA256)
@@ -69,6 +71,21 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // ── Telegram webhook ──────────────────────────────────────────────────
+    if (request.method === "POST" && url.pathname === "/telegram") {
+      if (env.WEBHOOK_SECRET && request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET) {
+        return new Response("forbidden", { status: 403 });
+      }
+      try {
+        const update = await request.json();
+        await handleTelegramUpdate(update, env);
+      } catch (e) {
+        console.error("tg update error", e);
+      }
+      return new Response("ok");
+    }
+
     if (request.method !== "POST" || url.pathname !== "/publish") {
       return cors(new Response("Not found", { status: 404 }));
     }
