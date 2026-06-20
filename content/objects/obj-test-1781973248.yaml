@@ -1,0 +1,11 @@
+id: obj-test-1781973248
+title: ТЕСТ публикации
+type: apartment
+status: active
+price: 1234567
+area: 40
+rooms: 1
+district: Тест-район
+description: Автотест публикации, будет удалён
+photos: []
+createdAt: "2026-06-20"
