@@ -4,10 +4,18 @@ import { resolveTenant } from "./tenants.js";
 import { handleTelegramUpdate } from "./telegram.js";
 import type { RealObject } from "../../schema/types.js";
 
+// Минимальный интерфейс Cloudflare KV (без зависимости от глобальных CF-типов)
+export interface KvLike {
+  get<T = unknown>(key: string, type: "json"): Promise<T | null>;
+  put(key: string, value: string): Promise<void>;
+  list(opts: { prefix: string }): Promise<{ keys: Array<{ name: string }> }>;
+}
+
 export interface Env {
   GITHUB_TOKEN: string;
   TELEGRAM_BOT_TOKEN: string;
   WEBHOOK_SECRET: string;
+  USERS: KvLike;
 }
 
 // Проверить подпись Telegram initData (HMAC-SHA256)

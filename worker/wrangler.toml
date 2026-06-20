@@ -8,6 +8,12 @@ compatibility_date = "2026-06-01"
 #
 # GITHUB_TOKEN — fine-grained PAT с правом записи в репозиторий
 # TELEGRAM_BOT_TOKEN — токен бота для проверки подписи initData
+# WEBHOOK_SECRET — секрет для проверки запросов Telegram-вебхука
+
+# Хранилище пользователей бота (для админки)
+[[kv_namespaces]]
+binding = "USERS"
+id = "bfdc31bf2fc64c3196eb97402ab58c06"
 
 # Будущее хранилище фото (пока хранятся в git)
 # [[r2_buckets]]

@@ -4,6 +4,7 @@ export interface Tenant {
   repo: string;
   branch: string;
   allowedUserIds: number[];
+  adminId: number;
   botTokenSecret: string;
 }
 
@@ -15,6 +16,7 @@ const TENANTS: Tenant[] = [
     repo: "Rieltorie",
     branch: "main",
     allowedUserIds: [1108556509, 1367102384],
+    adminId: 1367102384,
     botTokenSecret: "TELEGRAM_BOT_TOKEN",
   },
 ];
