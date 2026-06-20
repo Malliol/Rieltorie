@@ -19,6 +19,7 @@ export async function atomicCommit(opts: {
     Accept: "application/vnd.github+json",
     "Content-Type": "application/json",
     "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "rieltorie-worker",
   };
 
   // 1. Get current branch ref
