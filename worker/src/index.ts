@@ -1,7 +1,7 @@
 import yaml from "js-yaml";
-import { atomicCommit } from "./github.js";
+import { atomicCommit, listObjects, deleteObject } from "./github.js";
 import { resolveTenant } from "./tenants.js";
-import { handleTelegramUpdate } from "./telegram.js";
+import { handleTelegramUpdate, listUsers, trackUser, type TgUser } from "./telegram.js";
 import type { RealObject } from "../../schema/types.js";
 
 // Минимальный интерфейс Cloudflare KV (без зависимости от глобальных CF-типов)
@@ -51,6 +51,64 @@ async function verifyTelegram(initData: string, botToken: string): Promise<numbe
   return user.id;
 }
 
+// Достать объект пользователя из initData (после проверки подписи)
+function parseTgUser(initData: string): TgUser | null {
+  try {
+    const userStr = new URLSearchParams(initData).get("user");
+    if (!userStr) return null;
+    const u = JSON.parse(userStr) as { id: number; username?: string; first_name?: string };
+    return { id: u.id, username: u.username, first_name: u.first_name };
+  } catch {
+    return null;
+  }
+}
+
+function json(data: unknown, status = 200): Response {
+  return cors(new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  }));
+}
+
+// ── JSON API для мини-аппа (авторизация по initData) ───────────────────────
+async function handleApi(path: string, request: Request, env: Env): Promise<Response> {
+  const body = await request.json().catch(() => ({})) as { initData?: string; id?: string };
+  const initData = body.initData ?? "";
+  const tenant = resolveTenant(initData);
+  const botToken = (env as unknown as Record<string, string>)[tenant.botTokenSecret];
+  const userId = await verifyTelegram(initData, botToken);
+  const isAllowed = userId !== null && (tenant.allowedUserIds.length === 0 || tenant.allowedUserIds.includes(userId));
+  const isAdmin = userId !== null && userId === tenant.adminId;
+
+  // Зафиксировать пользователя мини-аппа (только при валидной подписи)
+  if (userId !== null) await trackUser(env.USERS, parseTgUser(initData) ?? { id: userId });
+
+  if (path === "/api/me") {
+    return json({ userId, isAllowed, isAdmin });
+  }
+
+  if (!isAllowed) return json({ error: "unauthorized" }, 401);
+
+  const repo = { token: env.GITHUB_TOKEN, owner: tenant.owner, repo: tenant.repo, branch: tenant.branch };
+
+  if (path === "/api/list") {
+    return json({ objects: await listObjects(repo) });
+  }
+
+  if (path === "/api/delete") {
+    if (!body.id) return json({ error: "no id" }, 400);
+    await deleteObject({ ...repo, id: body.id });
+    return json({ ok: true });
+  }
+
+  if (path === "/api/users") {
+    if (!isAdmin) return json({ error: "forbidden" }, 403);
+    return json({ users: await listUsers(env.USERS), adminId: tenant.adminId, allowedUserIds: tenant.allowedUserIds });
+  }
+
+  return json({ error: "not found" }, 404);
+}
+
 function blobToBase64(blob: Blob): Promise<string> {
   return blob.arrayBuffer().then((buf) => {
     const bytes = new Uint8Array(buf);
@@ -92,6 +150,16 @@ export default {
         console.error("tg update error", e);
       }
       return new Response("ok");
+    }
+
+    // ── JSON API мини-аппа ────────────────────────────────────────────────
+    if (request.method === "POST" && url.pathname.startsWith("/api/")) {
+      try {
+        return await handleApi(url.pathname, request, env);
+      } catch (e) {
+        console.error("api error", e);
+        return json({ error: String(e) }, 500);
+      }
     }
 
     if (request.method !== "POST" || url.pathname !== "/publish") {

@@ -1,288 +1,224 @@
-import React, { useState, useRef } from "react";
-import { ObjectPage, makeResolvePhoto } from "@rieltorie/render";
-import type { RealObject, Theme, Realtor } from "../../../schema/types.js";
-import { compressPhoto } from "./compressPhoto.js";
-import { detectLaunch } from "./verifyLaunch.js";
+import React, { useEffect, useState } from "react";
+import {
+  Plus, List as ListIcon, BarChart3, ShieldCheck, ChevronRight,
+  Trash2, Lock, Loader2, Crown, BadgeCheck,
+} from "lucide-react";
+import { api, type Me, type ObjectSummary, type UserRecord } from "./api.js";
+import { initTelegram, getUser, haptic, alert as tgAlert, confirm as tgConfirm, wa } from "./tg.js";
+import { PublishForm } from "./PublishForm.js";
 
-const WORKER_URL = import.meta.env.VITE_WORKER_URL ?? "https://rieltorie-worker.YOUR_SUBDOMAIN.workers.dev";
-
-const DEFAULT_THEME: Theme = {
-  name: "Классика",
-  bg: "#f5f5f0", surface: "#ffffff", ink: "#1a1a1a",
-  accent: "#1a3c5e", muted: "#6b7280", softAccent: "#e8eef4", border: "#e5e7eb",
-  display: "'Fraunces', Georgia, serif",
-  body: "'Inter', system-ui, sans-serif",
-  radius: 12, unit: 20, ratio: "4/3",
-};
-
-const DEFAULT_REALTOR: Realtor = {
-  name: "Риелтор",
-  phone: "+70000000000",
-};
-
-type Screen = "form" | "preview" | "done";
-
-interface PhotoEntry {
-  key: string;
-  previewUrl: string;
-  full: Blob;
-  thumb: Blob;
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="field"><label>{label}</label>{children}</div>;
-}
-
-function Row({ children }: { children: React.ReactNode }) {
-  return <div className="row">{children}</div>;
-}
+type Screen = "menu" | "publish" | "objects" | "stats" | "admin";
 
 export function App() {
-  const [screen, setScreen] = useState<Screen>("form");
-  const [publishing, setPublishing] = useState(false);
-  const [doneUrl, setDoneUrl] = useState("");
+  const [me, setMe] = useState<Me | null>(null);
+  const [meError, setMeError] = useState(false);
+  const [screen, setScreen] = useState<Screen>("menu");
+
+  useEffect(() => {
+    initTelegram();
+    api<Me>("/api/me").then(setMe).catch(() => setMeError(true));
+  }, []);
+
+  // Нативная кнопка «Назад» Telegram
+  useEffect(() => {
+    const bb = wa()?.BackButton;
+    if (!bb) return;
+    const handler = () => { haptic("light"); setScreen("menu"); };
+    bb.onClick(handler);
+    return () => bb.offClick(handler);
+  }, []);
+  useEffect(() => {
+    const bb = wa()?.BackButton;
+    if (!bb) return;
+    if (screen === "menu") bb.hide(); else bb.show();
+  }, [screen]);
+
+  const go = (s: Screen) => { haptic("light"); setScreen(s); };
+
+  if (meError) return <Centered icon={<Lock size={40} />} title="Не удалось подключиться" text="Проверьте соединение и откройте приложение заново." />;
+  if (!me) return <Centered icon={<Loader2 size={40} className="spin" />} title="Загрузка…" />;
+  if (!me.isAllowed) return <Centered icon={<Lock size={40} />} title="Нет доступа" text="Это приложение доступно только риелтору. Обратитесь к администратору." />;
+
+  if (screen === "publish") return <PublishForm onDone={() => go("menu")} />;
+  if (screen === "objects") return <MyObjects />;
+  if (screen === "stats") return <Stats />;
+  if (screen === "admin") return <Admin />;
+
+  return <Menu isAdmin={me.isAdmin} onSelect={go} />;
+}
+
+/* ─── Главное меню ─────────────────────────────────────────────────────── */
+
+function Menu({ isAdmin, onSelect }: { isAdmin: boolean; onSelect: (s: Screen) => void }) {
+  const name = getUser()?.first_name;
+  return (
+    <div className="menu">
+      <header className="menu-head">
+        <div className="menu-eyebrow">Кабинет риелтора</div>
+        <h1 className="menu-title">{name ? `Здравствуйте, ${name}` : "Здравствуйте"} 👋</h1>
+        <p className="menu-sub">Управляйте объявлениями прямо из Telegram</p>
+      </header>
+
+      <div className="menu-grid">
+        <MenuCard color="accent" icon={<Plus size={22} />} title="Опубликовать объект"
+          desc="Добавить новое объявление" onClick={() => onSelect("publish")} />
+        <MenuCard color="green" icon={<ListIcon size={22} />} title="Мои объявления"
+          desc="Просмотр и удаление" onClick={() => onSelect("objects")} />
+        <MenuCard color="amber" icon={<BarChart3 size={22} />} title="Статистика"
+          desc="Посещения и просмотры" onClick={() => onSelect("stats")} />
+        {isAdmin && (
+          <MenuCard color="violet" icon={<ShieldCheck size={22} />} title="Админка"
+            desc="Пользователи системы" onClick={() => onSelect("admin")} />
+        )}
+      </div>
+
+      <footer className="menu-foot">Rieltorie · v0.1</footer>
+    </div>
+  );
+}
+
+function MenuCard({ icon, title, desc, color, onClick }: {
+  icon: React.ReactNode; title: string; desc: string; color: string; onClick: () => void;
+}) {
+  return (
+    <button className="card" onClick={onClick}>
+      <span className={`card-ic ic-${color}`}>{icon}</span>
+      <span className="card-tx">
+        <span className="card-title">{title}</span>
+        <span className="card-desc">{desc}</span>
+      </span>
+      <ChevronRight size={20} className="card-arrow" />
+    </button>
+  );
+}
+
+/* ─── Мои объявления ───────────────────────────────────────────────────── */
+
+function MyObjects() {
+  const [objects, setObjects] = useState<ObjectSummary[] | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
 
-  // form state
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState<RealObject["type"]>("apartment");
-  const [price, setPrice] = useState("");
-  const [area, setArea] = useState("");
-  const [rooms, setRooms] = useState("");
-  const [floor, setFloor] = useState("");
-  const [floors, setFloors] = useState("");
-  const [year, setYear] = useState("");
-  const [district, setDistrict] = useState("");
-  const [street, setStreet] = useState("");
-  const [description, setDescription] = useState("");
-  const [features, setFeatures] = useState("");
-  const [photos, setPhotos] = useState<PhotoEntry[]>([]);
-
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  const previewObj: RealObject = {
-    id: "preview",
-    title: title || "Название объекта",
-    type,
-    status: "active",
-    price: Number(price) || 0,
-    area: area ? Number(area) : undefined,
-    rooms: rooms ? Number(rooms) : undefined,
-    floor: floor ? Number(floor) : undefined,
-    floors: floors ? Number(floors) : undefined,
-    year: year ? Number(year) : undefined,
-    district: district || undefined,
-    street: street || undefined,
-    description: description || undefined,
-    features: features ? features.split("\n").map((s) => s.trim()).filter(Boolean) : undefined,
-    photos: photos.map((p) => p.previewUrl),
-    createdAt: new Date().toISOString().slice(0, 10),
-  };
-
-  const resolvePhoto = makeResolvePhoto({});
-
-  async function handlePhotos(files: FileList | null) {
-    if (!files) return;
-    for (const file of Array.from(files)) {
-      const compressed = await compressPhoto(file);
-      const key = `photo-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
-      setPhotos((prev) => [...prev, { key, previewUrl: compressed.previewUrl, full: compressed.full, thumb: compressed.thumb }]);
-    }
-  }
-
-  async function publish() {
-    setPublishing(true);
+  const load = () => {
     setError("");
+    api<{ objects: ObjectSummary[] }>("/api/list")
+      .then((r) => setObjects(r.objects))
+      .catch((e) => setError(String(e)));
+  };
+  useEffect(load, []);
+
+  async function remove(o: ObjectSummary) {
+    if (!(await tgConfirm(`Удалить «${o.title}»?`))) return;
+    setBusy(o.id);
     try {
-      const launch = detectLaunch();
-      const id = `obj-${Date.now().toString(36)}`;
-      const obj: RealObject = {
-        ...previewObj,
-        id,
-        photos: photos.map((p) => p.key),
-      };
-
-      const fd = new FormData();
-      fd.append("initData", launch.initData);
-      fd.append("platform", launch.platform);
-      fd.append("object", JSON.stringify(obj));
-      for (const p of photos) {
-        fd.append(`photo:${p.key}`, p.full, p.key);
-        fd.append(`thumb:${p.key}`, p.thumb, p.key.replace(".webp", "-thumb.webp"));
-      }
-
-      const res = await fetch(`${WORKER_URL}/publish`, { method: "POST", body: fd });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      const json = await res.json() as { url: string };
-
-      // poll until page is live (max 3 min)
-      const deadline = Date.now() + 180_000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 5000));
-        try {
-          const check = await fetch(json.url, { method: "HEAD" });
-          if (check.ok) break;
-        } catch { /* still building */ }
-      }
-
-      setDoneUrl(json.url);
-      setScreen("done");
+      await api("/api/delete", { id: o.id });
+      haptic("success");
+      setObjects((prev) => prev?.filter((x) => x.id !== o.id) ?? null);
     } catch (e) {
-      setError(String(e));
+      haptic("error");
+      tgAlert("Не удалось удалить: " + String(e));
     } finally {
-      setPublishing(false);
+      setBusy(null);
     }
-  }
-
-  if (screen === "done") {
-    return (
-      <div style={{ padding: 24, textAlign: "center", fontFamily: "system-ui" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-        <h2 style={{ margin: "0 0 8px" }}>Объект опубликован!</h2>
-        <p style={{ color: "#6b7280", marginBottom: 24, fontSize: 14 }}>
-          Сайт обновился автоматически через GitHub Actions
-        </p>
-        <a href={doneUrl} target="_blank" rel="noreferrer" style={{
-          display: "block", padding: "14px", background: "#1a3c5e", color: "#fff",
-          borderRadius: 10, textDecoration: "none", fontWeight: 600, marginBottom: 12,
-        }}>
-          Открыть страницу объекта
-        </a>
-        <button onClick={() => setScreen("form")} className="btn btn-secondary">
-          Добавить ещё один объект
-        </button>
-      </div>
-    );
-  }
-
-  if (screen === "preview") {
-    return (
-      <div>
-        <ObjectPage
-          obj={previewObj}
-          realtor={DEFAULT_REALTOR}
-          theme={DEFAULT_THEME}
-          resolvePhoto={(k) => k}
-          showContacts={false}
-          interactive={true}
-          onBack={() => setScreen("form")}
-        />
-        <div style={{ padding: 16 }}>
-          {error && <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{error}</div>}
-          <button className="btn btn-primary" onClick={publish} disabled={publishing}>
-            {publishing ? <><div className="spinner" /> Публикуем...</> : "Опубликовать"}
-          </button>
-          <div style={{ height: 8 }} />
-          <button className="btn btn-secondary" onClick={() => setScreen("form")}>
-            ← Редактировать
-          </button>
-        </div>
-      </div>
-    );
   }
 
   return (
-    <div style={{ padding: 16, paddingBottom: 100, fontFamily: "system-ui" }}>
-      <h2 style={{ margin: "0 0 20px", fontSize: 18 }}>Новый объект</h2>
-
-      <Field label="Название *">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="2-комн. квартира на Ленина" />
-      </Field>
-
-      <Field label="Тип">
-        <select value={type} onChange={(e) => setType(e.target.value as RealObject["type"])}>
-          <option value="apartment">Квартира</option>
-          <option value="house">Дом</option>
-          <option value="land">Участок</option>
-          <option value="commercial">Коммерция</option>
-        </select>
-      </Field>
-
-      <Row>
-        <Field label="Цена, ₽ *">
-          <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="4500000" />
-        </Field>
-        <Field label="Площадь, м²">
-          <input type="number" value={area} onChange={(e) => setArea(e.target.value)} placeholder="52" />
-        </Field>
-      </Row>
-
-      <Row>
-        <Field label="Комнат">
-          <input type="number" value={rooms} onChange={(e) => setRooms(e.target.value)} placeholder="2" />
-        </Field>
-        <Field label="Год">
-          <input type="number" value={year} onChange={(e) => setYear(e.target.value)} placeholder="2015" />
-        </Field>
-      </Row>
-
-      <Row>
-        <Field label="Этаж">
-          <input type="number" value={floor} onChange={(e) => setFloor(e.target.value)} placeholder="5" />
-        </Field>
-        <Field label="Этажей в доме">
-          <input type="number" value={floors} onChange={(e) => setFloors(e.target.value)} placeholder="9" />
-        </Field>
-      </Row>
-
-      <Field label="Район">
-        <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="Центральный" />
-      </Field>
-
-      <Field label="Улица, дом">
-        <input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="ул. Ленина, 10" />
-      </Field>
-
-      <Field label="Описание">
-        <textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Светлая квартира с хорошим ремонтом..." />
-      </Field>
-
-      <Field label="Особенности (каждая с новой строки)">
-        <textarea rows={3} value={features} onChange={(e) => setFeatures(e.target.value)} placeholder={"Ремонт\nБалкон\nПарковка"} />
-      </Field>
-
-      <div className="section-title">Фотографии</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}>
-        {photos.map((p, i) => (
-          <div key={p.key} style={{ position: "relative", aspectRatio: "4/3" }}>
-            <img src={p.previewUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8 }} />
-            <button
-              onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
-              style={{
-                position: "absolute", top: 4, right: 4,
-                background: "rgba(0,0,0,0.6)", border: "none", color: "#fff",
-                borderRadius: "50%", width: 24, height: 24, cursor: "pointer", fontSize: 14,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >×</button>
+    <div className="screen">
+      <h2 className="screen-title">Мои объявления</h2>
+      {error && <div className="alert">{error}</div>}
+      {!objects && !error && <Skeleton />}
+      {objects && objects.length === 0 && <Empty text="Объявлений пока нет" />}
+      <div className="obj-list">
+        {objects?.map((o) => (
+          <div className="obj-row" key={o.id}>
+            <div className="obj-info">
+              <div className="obj-title">{o.title}</div>
+              <div className="obj-price">{o.price.toLocaleString("ru-RU")} ₽</div>
+            </div>
+            <button className="icon-btn danger" disabled={busy === o.id} onClick={() => remove(o)}>
+              {busy === o.id ? <Loader2 size={18} className="spin" /> : <Trash2 size={18} />}
+            </button>
           </div>
         ))}
-        <button
-          onClick={() => fileRef.current?.click()}
-          style={{
-            aspectRatio: "4/3", border: "2px dashed #d1d5db",
-            borderRadius: 8, background: "#f9fafb",
-            cursor: "pointer", color: "#9ca3af", fontSize: 24,
-          }}
-        >+</button>
-      </div>
-      <input
-        ref={fileRef} type="file" accept="image/*" multiple hidden
-        onChange={(e) => handlePhotos(e.target.files)}
-      />
-
-      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: 16, background: "#fff", borderTop: "1px solid #e5e7eb" }}>
-        <button
-          className="btn btn-primary"
-          disabled={!title || !price}
-          onClick={() => setScreen("preview")}
-        >
-          Предпросмотр →
-        </button>
       </div>
     </div>
   );
+}
+
+/* ─── Статистика (заглушка) ────────────────────────────────────────────── */
+
+function Stats() {
+  return (
+    <div className="screen">
+      <h2 className="screen-title">Статистика</h2>
+      <Centered
+        icon={<BarChart3 size={40} />}
+        title="Скоро здесь будет статистика"
+        text="Количество просмотров объявлений и посещений сайта появится в одном из следующих обновлений."
+        inline
+      />
+    </div>
+  );
+}
+
+/* ─── Админка ──────────────────────────────────────────────────────────── */
+
+function Admin() {
+  const [data, setData] = useState<{ users: UserRecord[]; adminId: number; allowedUserIds: number[] } | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api<{ users: UserRecord[]; adminId: number; allowedUserIds: number[] }>("/api/users")
+      .then(setData)
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  return (
+    <div className="screen">
+      <h2 className="screen-title">Пользователи системы</h2>
+      {error && <div className="alert">{error}</div>}
+      {!data && !error && <Skeleton />}
+      {data && data.users.length === 0 && <Empty text="Пользователей пока нет" />}
+      <div className="user-list">
+        {data?.users.map((u) => {
+          const handle = u.username ? `@${u.username}` : (u.name ?? "—");
+          const isAdmin = u.id === data.adminId;
+          const isRealtor = data.allowedUserIds.includes(u.id);
+          return (
+            <div className="user-row" key={u.id}>
+              <div className="user-av">{(u.name ?? u.username ?? "?").slice(0, 1).toUpperCase()}</div>
+              <div className="user-info">
+                <div className="user-name">
+                  {handle}
+                  {isAdmin ? <Crown size={14} className="badge-admin" /> : isRealtor ? <BadgeCheck size={14} className="badge-realtor" /> : null}
+                </div>
+                <div className="user-meta">id {u.id} · заходов: {u.count} · {u.last_seen.slice(0, 10)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {data && <p className="hint-note">👑 — администратор · ✅ — риелтор с доступом</p>}
+    </div>
+  );
+}
+
+/* ─── Вспомогательные ──────────────────────────────────────────────────── */
+
+function Centered({ icon, title, text, inline }: { icon: React.ReactNode; title: string; text?: string; inline?: boolean }) {
+  return (
+    <div className={inline ? "centered inline" : "centered"}>
+      <div className="centered-ic">{icon}</div>
+      <h3>{title}</h3>
+      {text && <p>{text}</p>}
+    </div>
+  );
+}
+
+function Skeleton() {
+  return <div className="skeleton-wrap">{[0, 1, 2].map((i) => <div className="skeleton" key={i} />)}</div>;
+}
+
+function Empty({ text }: { text: string }) {
+  return <div className="empty">{text}</div>;
 }
