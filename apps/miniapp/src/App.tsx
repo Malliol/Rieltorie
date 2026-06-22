@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from "react";
 import {
   Plus, List as ListIcon, BarChart3, ShieldCheck, ChevronRight,
-  Trash2, Pencil, Lock, Loader2, Crown, BadgeCheck,
+  Trash2, Pencil, Lock, Loader2, Crown, BadgeCheck, Contact,
 } from "lucide-react";
 import type { RealObject } from "../../../schema/types.js";
 import { api, type Me, type ObjectSummary, type UserRecord } from "./api.js";
 import { initTelegram, getUser, haptic, alert as tgAlert, confirm as tgConfirm, wa } from "./tg.js";
 import { PublishForm } from "./PublishForm.js";
+import { ProfileForm } from "./ProfileForm.js";
 
-type Screen = "menu" | "publish" | "objects" | "stats" | "admin";
+type Screen = "menu" | "publish" | "objects" | "profile" | "stats" | "admin";
 
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -44,6 +45,7 @@ export function App() {
 
   if (screen === "publish") return <PublishForm initial={editObj ?? undefined} onDone={() => go("menu")} />;
   if (screen === "objects") return <MyObjects onEdit={startEdit} />;
+  if (screen === "profile") return <ProfileForm onDone={() => go("menu")} />;
   if (screen === "stats") return <Stats />;
   if (screen === "admin") return <Admin />;
 
@@ -66,7 +68,9 @@ function Menu({ isAdmin, onSelect }: { isAdmin: boolean; onSelect: (s: Screen) =
         <MenuCard color="accent" icon={<Plus size={22} />} title="Опубликовать объект"
           desc="Добавить новое объявление" onClick={() => onSelect("publish")} />
         <MenuCard color="green" icon={<ListIcon size={22} />} title="Мои объявления"
-          desc="Просмотр и удаление" onClick={() => onSelect("objects")} />
+          desc="Просмотр, изменение, удаление" onClick={() => onSelect("objects")} />
+        <MenuCard color="sky" icon={<Contact size={22} />} title="Моя визитка"
+          desc="Фото, контакты, факты" onClick={() => onSelect("profile")} />
         <MenuCard color="amber" icon={<BarChart3 size={22} />} title="Статистика"
           desc="Посещения и просмотры" onClick={() => onSelect("stats")} />
         {isAdmin && (

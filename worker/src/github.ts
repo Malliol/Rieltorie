@@ -59,6 +59,16 @@ export async function listObjects(opts: RepoRef): Promise<ObjectSummary[]> {
   }));
 }
 
+// Получить профиль риелтора (распарсенный content/realtor.yaml)
+export async function getRealtor(opts: RepoRef): Promise<unknown> {
+  const { token, owner, repo, branch } = opts;
+  const headers = ghHeaders(token);
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/content/realtor.yaml?ref=${branch}`, { headers });
+  if (!res.ok) throw new Error(`Get realtor: ${await res.text()}`);
+  const j = await res.json() as { content: string };
+  return yaml.load(decodeBase64Utf8(j.content));
+}
+
 // Получить полный объект (распарсенный YAML) по id
 export async function getObject(opts: RepoRef & { id: string }): Promise<unknown> {
   const { token, owner, repo, branch, id } = opts;

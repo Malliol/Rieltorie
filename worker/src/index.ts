@@ -1,5 +1,5 @@
 import yaml from "js-yaml";
-import { atomicCommit, listObjects, deleteObject, getObject } from "./github.js";
+import { atomicCommit, listObjects, deleteObject, getObject, getRealtor } from "./github.js";
 import { resolveTenant } from "./tenants.js";
 import { handleTelegramUpdate, listUsers, trackUser, type TgUser } from "./telegram.js";
 import type { RealObject } from "../../schema/types.js";
@@ -70,18 +70,21 @@ function json(data: unknown, status = 200): Response {
   }));
 }
 
-// ── JSON API для мини-аппа (авторизация по initData) ───────────────────────
-async function handleApi(path: string, request: Request, env: Env): Promise<Response> {
-  const body = await request.json().catch(() => ({})) as { initData?: string; id?: string };
-  const initData = body.initData ?? "";
+// Проверить initData и определить права; попутно зафиксировать пользователя
+async function authenticate(initData: string, env: Env) {
   const tenant = resolveTenant(initData);
   const botToken = (env as unknown as Record<string, string>)[tenant.botTokenSecret];
   const userId = await verifyTelegram(initData, botToken);
   const isAllowed = userId !== null && (tenant.allowedUserIds.length === 0 || tenant.allowedUserIds.includes(userId));
   const isAdmin = userId !== null && userId === tenant.adminId;
-
-  // Зафиксировать пользователя мини-аппа (только при валидной подписи)
   if (userId !== null) await trackUser(env.USERS, parseTgUser(initData) ?? { id: userId });
+  return { tenant, userId, isAllowed, isAdmin };
+}
+
+// ── JSON API для мини-аппа (авторизация по initData) ───────────────────────
+async function handleApi(path: string, request: Request, env: Env): Promise<Response> {
+  const body = await request.json().catch(() => ({})) as { initData?: string; id?: string };
+  const { tenant, userId, isAllowed, isAdmin } = await authenticate(body.initData ?? "", env);
 
   if (path === "/api/me") {
     return json({ userId, isAllowed, isAdmin });
@@ -100,6 +103,10 @@ async function handleApi(path: string, request: Request, env: Env): Promise<Resp
     return json({ object: await getObject({ ...repo, id: body.id }) });
   }
 
+  if (path === "/api/profile/get") {
+    return json({ realtor: await getRealtor(repo) });
+  }
+
   if (path === "/api/delete") {
     if (!body.id) return json({ error: "no id" }, 400);
     await deleteObject({ ...repo, id: body.id });
@@ -112,6 +119,42 @@ async function handleApi(path: string, request: Request, env: Env): Promise<Resp
   }
 
   return json({ error: "not found" }, 404);
+}
+
+// Сохранение профиля риелтора (multipart: profile JSON + опциональное фото)
+async function handleProfileSave(request: Request, env: Env): Promise<Response> {
+  const form = await request.formData();
+  const initData = (form.get("initData") as string) ?? "";
+  const { tenant, isAllowed } = await authenticate(initData, env);
+  if (!isAllowed) return json({ error: "unauthorized" }, 401);
+
+  const profileJson = form.get("profile") as string;
+  if (!profileJson) return json({ error: "no profile" }, 400);
+  const realtor = JSON.parse(profileJson) as Record<string, unknown>;
+
+  const files: Array<{ path: string; content: string; encoding: "utf-8" | "base64" }> = [];
+
+  const photo = form.get("photo");
+  if (photo instanceof Blob && photo.size > 0) {
+    // версионируем имя файла, чтобы обойти кэш CDN/браузера
+    const filename = `realtor-${Date.now()}.webp`;
+    realtor.photo = filename;
+    files.push({ path: `content/assets/${filename}`, content: await blobToBase64(photo), encoding: "base64" });
+  }
+
+  const yamlContent = yaml.dump(realtor, { lineWidth: 120, quotingType: '"' });
+  files.push({ path: "content/realtor.yaml", content: yamlContent, encoding: "utf-8" });
+
+  await atomicCommit({
+    token: env.GITHUB_TOKEN,
+    owner: tenant.owner,
+    repo: tenant.repo,
+    branch: tenant.branch,
+    message: "content: update realtor profile",
+    files,
+  });
+
+  return json({ ok: true });
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -155,6 +198,16 @@ export default {
         console.error("tg update error", e);
       }
       return new Response("ok");
+    }
+
+    // ── Сохранение профиля (multipart) ────────────────────────────────────
+    if (request.method === "POST" && url.pathname === "/api/profile/save") {
+      try {
+        return await handleProfileSave(request, env);
+      } catch (e) {
+        console.error("profile save error", e);
+        return json({ error: String(e) }, 500);
+      }
     }
 
     // ── JSON API мини-аппа ────────────────────────────────────────────────
