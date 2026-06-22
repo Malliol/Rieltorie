@@ -1,5 +1,5 @@
 import yaml from "js-yaml";
-import { atomicCommit, listObjects, deleteObject } from "./github.js";
+import { atomicCommit, listObjects, deleteObject, getObject } from "./github.js";
 import { resolveTenant } from "./tenants.js";
 import { handleTelegramUpdate, listUsers, trackUser, type TgUser } from "./telegram.js";
 import type { RealObject } from "../../schema/types.js";
@@ -93,6 +93,11 @@ async function handleApi(path: string, request: Request, env: Env): Promise<Resp
 
   if (path === "/api/list") {
     return json({ objects: await listObjects(repo) });
+  }
+
+  if (path === "/api/get") {
+    if (!body.id) return json({ error: "no id" }, 400);
+    return json({ object: await getObject({ ...repo, id: body.id }) });
   }
 
   if (path === "/api/delete") {

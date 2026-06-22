@@ -59,6 +59,17 @@ export async function listObjects(opts: RepoRef): Promise<ObjectSummary[]> {
   }));
 }
 
+// Получить полный объект (распарсенный YAML) по id
+export async function getObject(opts: RepoRef & { id: string }): Promise<unknown> {
+  const { token, owner, repo, branch, id } = opts;
+  const headers = ghHeaders(token);
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/content/objects/${id}.yaml?ref=${branch}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`Get object: ${await res.text()}`);
+  const j = await res.json() as { content: string };
+  return yaml.load(decodeBase64Utf8(j.content));
+}
+
 // Удалить объект (yaml) по id
 export async function deleteObject(opts: RepoRef & { id: string }): Promise<void> {
   const { token, owner, repo, branch, id } = opts;

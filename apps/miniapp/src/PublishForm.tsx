@@ -3,7 +3,7 @@ import { ObjectPage, makeResolvePhoto } from "@rieltorie/render";
 import type { RealObject, Theme, Realtor } from "../../../schema/types.js";
 import { compressPhoto } from "./compressPhoto.js";
 import { getInitData, haptic } from "./tg.js";
-import { WORKER_URL } from "./api.js";
+import { WORKER_URL, SITE_BASE } from "./api.js";
 
 const DEFAULT_THEME: Theme = {
   name: "Классика",
@@ -16,7 +16,9 @@ const DEFAULT_THEME: Theme = {
 
 const DEFAULT_REALTOR: Realtor = { name: "Риелтор", phone: "+70000000000" };
 
-interface PhotoEntry { key: string; previewUrl: string; full: Blob; thumb: Blob; }
+interface PhotoEntry { key: string; previewUrl: string; full?: Blob; thumb?: Blob; existing?: boolean; }
+
+const numStr = (n: number | undefined) => (n === undefined || n === null ? "" : String(n));
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="field"><label>{label}</label>{children}</div>;
@@ -25,25 +27,28 @@ function Row({ children }: { children: React.ReactNode }) {
   return <div className="row">{children}</div>;
 }
 
-export function PublishForm({ onDone }: { onDone: () => void }) {
+export function PublishForm({ onDone, initial }: { onDone: () => void; initial?: RealObject }) {
+  const isEdit = !!initial;
   const [step, setStep] = useState<"form" | "preview" | "done">("form");
   const [publishing, setPublishing] = useState(false);
   const [doneUrl, setDoneUrl] = useState("");
   const [error, setError] = useState("");
 
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState<RealObject["type"]>("apartment");
-  const [price, setPrice] = useState("");
-  const [area, setArea] = useState("");
-  const [rooms, setRooms] = useState("");
-  const [floor, setFloor] = useState("");
-  const [floors, setFloors] = useState("");
-  const [year, setYear] = useState("");
-  const [district, setDistrict] = useState("");
-  const [street, setStreet] = useState("");
-  const [description, setDescription] = useState("");
-  const [features, setFeatures] = useState("");
-  const [photos, setPhotos] = useState<PhotoEntry[]>([]);
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [type, setType] = useState<RealObject["type"]>(initial?.type ?? "apartment");
+  const [price, setPrice] = useState(numStr(initial?.price));
+  const [area, setArea] = useState(numStr(initial?.area));
+  const [rooms, setRooms] = useState(numStr(initial?.rooms));
+  const [floor, setFloor] = useState(numStr(initial?.floor));
+  const [floors, setFloors] = useState(numStr(initial?.floors));
+  const [year, setYear] = useState(numStr(initial?.year));
+  const [district, setDistrict] = useState(initial?.district ?? "");
+  const [street, setStreet] = useState(initial?.street ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [features, setFeatures] = useState((initial?.features ?? []).join("\n"));
+  const [photos, setPhotos] = useState<PhotoEntry[]>(
+    (initial?.photos ?? []).map((key) => ({ key, previewUrl: `${SITE_BASE}/assets/${key}`, existing: true })),
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   const previewObj: RealObject = {
@@ -62,7 +67,7 @@ export function PublishForm({ onDone }: { onDone: () => void }) {
     description: description || undefined,
     features: features ? features.split("\n").map((s) => s.trim()).filter(Boolean) : undefined,
     photos: photos.map((p) => p.previewUrl),
-    createdAt: new Date().toISOString().slice(0, 10),
+    createdAt: initial?.createdAt ?? new Date().toISOString().slice(0, 10),
   };
 
   async function handlePhotos(files: FileList | null) {
@@ -78,16 +83,19 @@ export function PublishForm({ onDone }: { onDone: () => void }) {
     setPublishing(true);
     setError("");
     try {
-      const id = `obj-${Date.now().toString(36)}`;
+      const id = initial?.id ?? `obj-${Date.now().toString(36)}`;
       const obj: RealObject = { ...previewObj, id, photos: photos.map((p) => p.key) };
 
       const fd = new FormData();
       fd.append("initData", getInitData());
       fd.append("platform", "telegram");
       fd.append("object", JSON.stringify(obj));
+      // загружаем только новые фото (у существующих нет блобов — они уже в репозитории)
       for (const p of photos) {
-        fd.append(`photo:${p.key}`, p.full, p.key);
-        fd.append(`thumb:${p.key}`, p.thumb, p.key.replace(".webp", "-thumb.webp"));
+        if (p.full && p.thumb) {
+          fd.append(`photo:${p.key}`, p.full, p.key);
+          fd.append(`thumb:${p.key}`, p.thumb, p.key.replace(".webp", "-thumb.webp"));
+        }
       }
 
       const res = await fetch(`${WORKER_URL}/publish`, { method: "POST", body: fd });
@@ -115,7 +123,7 @@ export function PublishForm({ onDone }: { onDone: () => void }) {
     return (
       <div className="done">
         <div className="done-check">✅</div>
-        <h2>Объект опубликован!</h2>
+        <h2>{isEdit ? "Объявление обновлено!" : "Объект опубликован!"}</h2>
         <p>Сайт обновится автоматически через пару минут</p>
         <a href={doneUrl} target="_blank" rel="noreferrer" className="btn btn-primary">Открыть страницу объекта</a>
         <div style={{ height: 10 }} />
@@ -139,7 +147,7 @@ export function PublishForm({ onDone }: { onDone: () => void }) {
         <div style={{ padding: 16 }}>
           {error && <div className="alert">{error}</div>}
           <button className="btn btn-primary" onClick={publish} disabled={publishing}>
-            {publishing ? <><div className="spinner" /> Публикуем…</> : "Опубликовать"}
+            {publishing ? <><div className="spinner" /> Сохраняем…</> : (isEdit ? "Сохранить изменения" : "Опубликовать")}
           </button>
           <div style={{ height: 8 }} />
           <button className="btn btn-secondary" onClick={() => setStep("form")}>← Редактировать</button>
@@ -150,7 +158,7 @@ export function PublishForm({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="screen" style={{ paddingBottom: 96 }}>
-      <h2 className="screen-title">Новый объект</h2>
+      <h2 className="screen-title">{isEdit ? "Редактировать объявление" : "Новый объект"}</h2>
 
       <Field label="Название *">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="2-комн. квартира на Ленина" />

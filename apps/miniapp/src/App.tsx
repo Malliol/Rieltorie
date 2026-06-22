@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import {
   Plus, List as ListIcon, BarChart3, ShieldCheck, ChevronRight,
-  Trash2, Lock, Loader2, Crown, BadgeCheck,
+  Trash2, Pencil, Lock, Loader2, Crown, BadgeCheck,
 } from "lucide-react";
+import type { RealObject } from "../../../schema/types.js";
 import { api, type Me, type ObjectSummary, type UserRecord } from "./api.js";
 import { initTelegram, getUser, haptic, alert as tgAlert, confirm as tgConfirm, wa } from "./tg.js";
 import { PublishForm } from "./PublishForm.js";
@@ -13,6 +14,7 @@ export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [meError, setMeError] = useState(false);
   const [screen, setScreen] = useState<Screen>("menu");
+  const [editObj, setEditObj] = useState<RealObject | null>(null);
 
   useEffect(() => {
     initTelegram();
@@ -33,14 +35,15 @@ export function App() {
     if (screen === "menu") bb.hide(); else bb.show();
   }, [screen]);
 
-  const go = (s: Screen) => { haptic("light"); setScreen(s); };
+  const go = (s: Screen) => { haptic("light"); if (s !== "publish") setEditObj(null); setScreen(s); };
+  const startEdit = (obj: RealObject) => { haptic("light"); setEditObj(obj); setScreen("publish"); };
 
   if (meError) return <Centered icon={<Lock size={40} />} title="Не удалось подключиться" text="Проверьте соединение и откройте приложение заново." />;
   if (!me) return <Centered icon={<Loader2 size={40} className="spin" />} title="Загрузка…" />;
   if (!me.isAllowed) return <Centered icon={<Lock size={40} />} title="Нет доступа" text="Это приложение доступно только риелтору. Обратитесь к администратору." />;
 
-  if (screen === "publish") return <PublishForm onDone={() => go("menu")} />;
-  if (screen === "objects") return <MyObjects />;
+  if (screen === "publish") return <PublishForm initial={editObj ?? undefined} onDone={() => go("menu")} />;
+  if (screen === "objects") return <MyObjects onEdit={startEdit} />;
   if (screen === "stats") return <Stats />;
   if (screen === "admin") return <Admin />;
 
@@ -94,10 +97,11 @@ function MenuCard({ icon, title, desc, color, onClick }: {
 
 /* ─── Мои объявления ───────────────────────────────────────────────────── */
 
-function MyObjects() {
+function MyObjects({ onEdit }: { onEdit: (obj: RealObject) => void }) {
   const [objects, setObjects] = useState<ObjectSummary[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const load = () => {
     setError("");
@@ -122,6 +126,19 @@ function MyObjects() {
     }
   }
 
+  async function edit(o: ObjectSummary) {
+    setEditing(o.id);
+    try {
+      const r = await api<{ object: RealObject }>("/api/get", { id: o.id });
+      onEdit(r.object);
+    } catch (e) {
+      haptic("error");
+      tgAlert("Не удалось открыть: " + String(e));
+    } finally {
+      setEditing(null);
+    }
+  }
+
   return (
     <div className="screen">
       <h2 className="screen-title">Мои объявления</h2>
@@ -135,6 +152,9 @@ function MyObjects() {
               <div className="obj-title">{o.title}</div>
               <div className="obj-price">{o.price.toLocaleString("ru-RU")} ₽</div>
             </div>
+            <button className="icon-btn" disabled={editing === o.id} onClick={() => edit(o)}>
+              {editing === o.id ? <Loader2 size={18} className="spin" /> : <Pencil size={18} />}
+            </button>
             <button className="icon-btn danger" disabled={busy === o.id} onClick={() => remove(o)}>
               {busy === o.id ? <Loader2 size={18} className="spin" /> : <Trash2 size={18} />}
             </button>
