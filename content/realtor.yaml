@@ -1,12 +1,12 @@
+photo: realtor.webp
 name: Ирина Чиндяева
 tagline: Жильё в Оренбурге — подбор, проверка, сделка под ключ
 phone: "+79226251044"
 telegram: ira_chindyaeva
-photo: realtor.webp
 facts:
   - label: на рынке
-    value: "8 лет"
+    value: 8 лет
   - label: сделок
-    value: "210+"
+    value: 210+
   - label: рейтинг
     value: "4.9"
