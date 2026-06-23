@@ -149,6 +149,7 @@ export function ObjectPage({
       {showContacts && (
         <div style={{
           position: "fixed", left: 0, right: 0, bottom: 0,
+          maxWidth: 720, margin: "0 auto",
           background: t.surface, borderTop: `1px solid ${t.border}`,
           padding: `${u * 0.6}px ${u}px`,
           display: "flex", gap: 8,

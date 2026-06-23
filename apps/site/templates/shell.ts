@@ -33,6 +33,24 @@ export function shell(opts: {
       --ink: ${t.ink};
       --border: ${t.border};
     }
+    /* Центрированная колонка: на ПК сайт не растягивается на всю ширину */
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: ${t.bg};
+      position: relative;
+    }
+    /* Фиксированную панель кнопок держим в пределах колонки */
+    .page > div > div[style*="position: fixed"],
+    .page > div > div[style*="position:fixed"] {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    @media (min-width: 760px) {
+      body { background: #d9dee6; }
+      .page { box-shadow: 0 0 1px rgba(0,0,0,0.2), 0 8px 40px rgba(0,0,0,0.12); }
+    }
     :focus-visible { outline: 2px solid ${t.accent}; outline-offset: 2px; }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
     img[style*="visibility:hidden"] { display: none; }
@@ -46,7 +64,9 @@ export function shell(opts: {
   </script>
 </head>
 <body>
+<div class="page">
 ${body}
+</div>
 </body>
 </html>`;
 }
